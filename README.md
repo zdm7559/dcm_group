@@ -29,10 +29,8 @@ scripts/
 
 ## 安装依赖
 
-使用指定的 conda 环境：
-
 ```bash
-/home/zhaodongmin/.conda/envs/llm-app/bin/python -m pip install -r requirements.txt
+python -m pip install -r requirements.txt
 ```
 
 如果环境中已经安装过依赖，可以跳过这一步。
@@ -41,7 +39,7 @@ scripts/
 
 ```bash
 cd /home/zhaodongmin/飞书挑战赛/project
-/home/zhaodongmin/.conda/envs/llm-app/bin/python -m uvicorn web_service.app:app --reload
+python -m uvicorn web_service.app:app --reload
 ```
 
 服务启动后访问：
@@ -82,8 +80,8 @@ curl 'http://127.0.0.1:8000/users/999'
 也可以使用脚本触发：
 
 ```bash
-/home/zhaodongmin/.conda/envs/llm-app/bin/python scripts/trigger_bug.py divide
-/home/zhaodongmin/.conda/envs/llm-app/bin/python scripts/trigger_bug.py user
+python scripts/trigger_bug.py divide
+python scripts/trigger_bug.py user
 ```
 
 当前这两个接口会故意返回 `500`，用于模拟服务运行时异常：
@@ -125,7 +123,7 @@ logs/error.log
 ## 运行测试
 
 ```bash
-/home/zhaodongmin/.conda/envs/llm-app/bin/python -m pytest tests/
+python -m pytest tests/
 ```
 
 当前初始状态下，测试预期是：
