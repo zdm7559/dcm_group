@@ -9,6 +9,5 @@ router = APIRouter(tags=["calculator"])
 
 
 @router.get("/divide")
-def divide(a: float, b: float) -> dict[str, float]:
+async def divide(a: float, b: float) -> dict[str, float]:
     return {"result": divide_numbers(a, b)}
-

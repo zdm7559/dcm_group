@@ -9,6 +9,5 @@ router = APIRouter(tags=["users"])
 
 
 @router.get("/users/{user_id}")
-def get_user(user_id: int) -> dict[str, object]:
+async def get_user(user_id: int) -> dict[str, object]:
     return get_user_by_id(user_id)
-
