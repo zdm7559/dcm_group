@@ -38,7 +38,6 @@ python -m pip install -r requirements.txt
 ## 启动服务
 
 ```bash
-cd /home/zhaodongmin/飞书挑战赛/project
 python -m uvicorn web_service.app:app --reload
 ```
 
