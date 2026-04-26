@@ -4,4 +4,7 @@ __pycache__/
 .venv/
 logs/error.log
 CLAUDE.md
+
+# 忽略所有 .env 文件
 .env
+.env.*
