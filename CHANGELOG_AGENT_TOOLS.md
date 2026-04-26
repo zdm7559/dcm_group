@@ -15,10 +15,12 @@ Web 服务报错 -> 写入 logs/error.log -> Agent 读取日志 -> 定位代码 
 - `agent/tools/git_ops.py`：Git 分支、diff、commit、GitHub PR 等工具。
 - `agent/tools/feishu_notify.py`：飞书卡片构造和 webhook 通知工具。
 
-本分支补充了 Agent 修复流程前半段需要的两个工具：
+本分支补充了 Agent 修复流程需要的四个工具：
 
 - `agent/tools/read_log.py`
+- `agent/tools/read_file.py`
 - `agent/tools/run_tests.py`
+- `agent/tools/write_file.py`
 
 ## 新增文件
 
@@ -95,6 +97,55 @@ result = read_error_logs(mode="grouped")
 }
 ```
 
+### `agent/tools/read_file.py`
+
+作用：根据错误事件读取相关源码上下文。
+
+核心能力：
+
+- 支持读取单个文件、多个文件。
+- 支持直接消费 `read_log` 返回的 `error_event`。
+- 优先使用 AST 读取目标行所在的完整函数或异步函数。
+- 如果找不到函数，退回到目标行附近窗口。
+- 默认额外读取 `tests/test_service.py`，帮助 Agent 理解验收标准。
+
+示例用法：
+
+```python
+from agent.tools import read_error_logs, read_files_for_error
+
+log_result = read_error_logs(mode="latest")
+error_event = log_result["data"]["error"]
+result = read_files_for_error(error_event)
+```
+
+### `agent/tools/write_file.py`
+
+作用：将 Agent 生成的修复安全写入源码文件。
+
+核心能力：
+
+- `replace_in_file()`：单点精确替换。
+- `apply_replacements()`：多文件、多位置批量替换。
+- `write_file()`：受保护的整文件写入。
+- 批量替换会先验证全部操作，再统一写回，避免半成功状态。
+- 默认拒绝写入 `.git`、`.env`、`logs/error.log`、缓存目录等路径。
+- 返回修改文件列表，以及写入前后的 sha256 摘要。
+
+示例用法：
+
+```python
+from agent.tools import apply_replacements
+
+result = apply_replacements([
+    {
+        "path": "web_service/services/calculator.py",
+        "old_text": "return a / b",
+        "new_text": "return a / b",
+    }
+])
+```
+
 ### `agent/tools/run_tests.py`
 
 作用：在 Agent 修改代码后运行测试，判断修复是否成功。
@@ -145,13 +196,19 @@ result = run_tests(cwd=".")
 ```python
 read_error_logs
 read_latest_error_log
+read_file
+read_files
+read_files_for_error
 run_tests
+replace_in_file
+apply_replacements
+write_file
 ```
 
 因此 Agent 主流程后续可以直接这样导入：
 
 ```python
-from agent.tools import read_error_logs, run_tests
+from agent.tools import read_error_logs, read_files_for_error, apply_replacements, run_tests
 ```
 
 ## 当前预期测试结果
@@ -178,7 +235,7 @@ python -m pytest tests/
 ## 验证命令
 
 ```bash
-python -m py_compile agent/tools/read_log.py agent/tools/run_tests.py agent/tools/__init__.py
+python -m py_compile agent/tools/read_log.py agent/tools/read_file.py agent/tools/run_tests.py agent/tools/write_file.py agent/tools/__init__.py
 python -m pytest tests/
 ```
 
@@ -187,9 +244,9 @@ python -m pytest tests/
 ```text
 read_error_logs(mode="grouped")
   -> Agent 选择要处理的错误
-  -> 根据 context_hints.files_to_read 调用 read_file
-  -> Agent 生成修复方案
-  -> 写入代码
+  -> read_files_for_error() 读取相关源码
+  -> Agent 生成修复方案和替换操作
+  -> apply_replacements() 写入代码
   -> run_tests()
   -> 测试通过后调用 git_ops / feishu_notify
 ```

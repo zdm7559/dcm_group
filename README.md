@@ -30,7 +30,9 @@ agent/
     git_ops.py              # Git 分支、diff、commit、PR 工具
     feishu_notify.py        # 飞书卡片通知工具
     read_log.py             # 读取并结构化解析错误日志
+    read_file.py            # 读取错误相关源码上下文
     run_tests.py            # 运行测试并返回结构化结果
+    write_file.py           # 安全写入和批量替换源码
 ```
 
 ## 安装依赖
@@ -190,13 +192,15 @@ bug 能稳定复现
 
 ## Agent 工具
 
-当前已实现四个工具模块：
+当前已实现六个工具模块：
 
 ```text
 agent/tools/git_ops.py
 agent/tools/feishu_notify.py
 agent/tools/read_log.py
+agent/tools/read_file.py
 agent/tools/run_tests.py
+agent/tools/write_file.py
 ```
 
 更详细的工具层变更说明见：
@@ -234,6 +238,41 @@ python - <<'PY'
 from agent.tools import read_error_logs
 
 result = read_error_logs(mode="grouped")
+print(result)
+PY
+```
+
+### 源码读取工具
+
+`read_file.py` 负责根据 `read_log` 输出的错误事件读取相关源码上下文。
+
+核心函数：
+
+```text
+read_file()
+read_files()
+read_files_for_error()
+```
+
+主要能力：
+
+```text
+优先读取目标行所在的完整函数或异步函数
+找不到函数时退回到目标行附近窗口
+支持一次读取多个文件
+可以直接消费 read_log 返回的 error_event
+默认额外读取 tests/test_service.py，帮助 Agent 理解测试期望
+```
+
+示例：
+
+```bash
+python - <<'PY'
+from agent.tools import read_error_logs, read_files_for_error
+
+log_result = read_error_logs(mode="latest")
+error_event = log_result["data"]["error"]
+result = read_files_for_error(error_event)
 print(result)
 PY
 ```
@@ -281,6 +320,43 @@ PY
 
 ```text
 3 passed, 2 failed
+```
+
+### 源码写入工具
+
+`write_file.py` 负责把 Agent 生成的修复安全写入项目文件。
+
+核心函数：
+
+```text
+replace_in_file()
+apply_replacements()
+write_file()
+```
+
+主要能力：
+
+```text
+replace_in_file 用于单点精确替换
+apply_replacements 用于多文件、多位置批量替换
+write_file 用于受保护的整文件写入
+批量替换会先验证全部操作，再统一写回，避免半成功状态
+默认拒绝写入 .git、.env、logs/error.log、缓存目录等路径
+返回变更文件和写入前后的 sha256 摘要
+```
+
+示例：
+
+```python
+from agent.tools import apply_replacements
+
+result = apply_replacements([
+    {
+        "path": "web_service/services/calculator.py",
+        "old_text": "return a / b",
+        "new_text": "return a / b",
+    }
+])
 ```
 
 ### Git 工具
@@ -359,8 +435,9 @@ Agent 只需要根据 `ok` 判断是否继续下一步。
 ```text
 read_error_logs(mode="grouped")
   -> 选择一个错误事件
-  -> 根据 context_hints.files_to_read 读取相关源码
-  -> 生成并写入修复
+  -> read_files_for_error()
+  -> LLM 生成修复操作
+  -> apply_replacements() / replace_in_file() / write_file()
   -> run_tests()
   -> git_diff()
   -> git_commit()
