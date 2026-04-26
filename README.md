@@ -25,6 +25,10 @@ tests/
   test_service.py           # 修复验收测试
 scripts/
   trigger_bug.py            # 演示用脚本，用于稳定触发 bug
+agent/
+  tools/
+    git_ops.py              # Git 分支、diff、commit、PR 工具
+    feishu_notify.py        # 飞书卡片通知工具
 ```
 
 ## 安装依赖
@@ -34,6 +38,37 @@ python -m pip install -r requirements.txt
 ```
 
 如果环境中已经安装过依赖，可以跳过这一步。
+
+## 环境变量
+
+复制示例配置：
+
+```bash
+cp .env.example .env
+```
+
+然后在 `.env` 中填入真实配置：
+
+```bash
+FEISHU_WEBHOOK_URL="你的飞书自定义机器人 Webhook"
+GITHUB_TOKEN="你的 GitHub Personal Access Token"
+
+GIT_AUTHOR_NAME="AutoFix Agent"
+GIT_AUTHOR_EMAIL="autofix-agent@example.com"
+GIT_COMMITTER_NAME="AutoFix Agent"
+GIT_COMMITTER_EMAIL="autofix-agent@example.com"
+```
+
+说明：
+
+```text
+FEISHU_WEBHOOK_URL  用于发送飞书 Review 卡片
+GITHUB_TOKEN        用于通过 GitHub API 创建 Pull Request
+GIT_AUTHOR_*        用于让 Agent 生成的 commit 显示为 AutoFix Agent
+GIT_COMMITTER_*     用于设置 Agent commit 的提交者信息
+```
+
+`.env` 只保存在本地，不要提交到 Git。
 
 ## 启动服务
 
@@ -150,3 +185,146 @@ bug 能稳定复现
 ```
 
 后续 Agent 会读取 `logs/error.log`，定位代码问题，修改 `services/` 或 `repositories/` 中的业务代码，并运行 `pytest tests/` 验证修复是否成功。
+
+## Agent 工具
+
+当前已实现两个工具模块：
+
+```text
+agent/tools/git_ops.py
+agent/tools/feishu_notify.py
+```
+
+### Git 工具
+
+`git_ops.py` 覆盖 Agent 自动修复后的 Git / GitHub 流程：
+
+```text
+sync_base_branch()
+  -> git switch main
+  -> git pull origin main
+
+create_branch()
+  -> git switch -c agent/fix-{error-slug}-{timestamp}
+
+git_diff()
+  -> git diff
+
+git_commit()
+  -> git add .
+  -> git commit -m "fix: ..."
+
+create_pr()
+  -> git push origin 当前分支
+  -> 调用 GitHub API 创建 PR
+```
+
+分支命名建议：
+
+```text
+agent/fix-{error-slug}-{timestamp}
+```
+
+示例：
+
+```text
+agent/fix-zero-division-error-20260426112830
+agent/fix-key-error-20260426113012
+```
+
+### 飞书通知工具
+
+`feishu_notify.py` 负责构造并发送飞书消息卡片：
+
+```text
+build_review_card()   # 构造 Card JSON 2.0 卡片
+send_feishu_card()    # 发送到飞书自定义机器人 Webhook
+```
+
+飞书卡片使用 Card JSON 2.0：
+
+```text
+https://open.feishu.cn/document/feishu-cards/card-json-v2-structure
+```
+
+自定义机器人发送卡片参考：
+
+```text
+https://open.feishu.cn/document/feishu-cards/quick-start/send-message-cards-with-custom-bot
+```
+
+### 工具返回格式
+
+所有工具统一返回：
+
+```python
+{"ok": True, "data": ..., "error": None}
+{"ok": False, "data": ..., "error": "..."}
+```
+
+Agent 只需要根据 `ok` 判断是否继续下一步。
+
+## Git / 飞书联调测试
+
+如果要在测试仓库中验证 GitHub PR + 飞书通知，可以把测试仓库放在：
+
+```text
+external_repos/
+```
+
+示例：
+
+```bash
+mkdir -p external_repos
+git clone git@github.com:ChailynCui/auto-fix-agent-test.git external_repos/auto-fix-agent-test
+```
+
+然后运行：
+
+```bash
+python - <<'PY'
+from datetime import datetime
+from pathlib import Path
+
+from agent.tools.git_ops import (
+    create_branch,
+    create_pr,
+    git_commit,
+    git_diff,
+    sync_base_branch,
+)
+from agent.tools.feishu_notify import build_review_card, send_feishu_card
+
+repo_path = "external_repos/auto-fix-agent-test"
+branch = "agent/fix-zero-division-error-" + datetime.now().strftime("%Y%m%d%H%M%S")
+
+print(sync_base_branch("main", repo_path=repo_path))
+print(create_branch(branch, repo_path=repo_path))
+
+test_file = Path(repo_path) / "agent_git_tool_test.txt"
+test_file.write_text(f"AutoFix Agent test branch: {branch}\n", encoding="utf-8")
+
+print(git_diff(repo_path=repo_path))
+print(git_commit("test: verify agent git tools", repo_path=repo_path))
+
+pr_result = create_pr(
+    title="test: verify agent git tools",
+    body="Testing AutoFix Agent git_ops flow.",
+    repo_path=repo_path,
+    base="main",
+)
+print(pr_result)
+
+if pr_result["ok"]:
+    payload = build_review_card(
+        title="Agent 已自动修复 Bug，请 Review",
+        bug_type="ZeroDivisionError",
+        endpoint="GET /divide?a=10&b=0",
+        branch=pr_result["data"]["head"],
+        pr_url=pr_result["data"]["url"],
+        test_result="passed",
+        risk_level="low",
+    )
+    print(send_feishu_card(payload))
+PY
+```
