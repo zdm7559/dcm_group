@@ -4,3 +4,4 @@ __pycache__/
 .venv/
 logs/error.log
 CLAUDE.md
+.env
