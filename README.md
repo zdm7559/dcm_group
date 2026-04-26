@@ -29,6 +29,8 @@ agent/
   tools/
     git_ops.py              # Git 分支、diff、commit、PR 工具
     feishu_notify.py        # 飞书卡片通知工具
+    read_log.py             # 读取并结构化解析错误日志
+    run_tests.py            # 运行测试并返回结构化结果
 ```
 
 ## 安装依赖
@@ -188,11 +190,97 @@ bug 能稳定复现
 
 ## Agent 工具
 
-当前已实现两个工具模块：
+当前已实现四个工具模块：
 
 ```text
 agent/tools/git_ops.py
 agent/tools/feishu_notify.py
+agent/tools/read_log.py
+agent/tools/run_tests.py
+```
+
+更详细的工具层变更说明见：
+
+```text
+CHANGELOG_AGENT_TOOLS.md
+```
+
+### 日志读取工具
+
+`read_log.py` 负责把 `logs/error.log` 转换成 Agent 可处理的结构化错误事件。
+
+核心函数：
+
+```text
+read_error_logs()
+read_latest_error_log()
+```
+
+主要能力：
+
+```text
+读取多个 AUTO_FIX_BUG_START / AUTO_FIX_BUG_END 日志块
+支持 all / latest / grouped 三种读取模式
+按 fingerprint 聚合同类错误
+保留完整 traceback
+提取项目内 project_frames
+生成 suspect_frame 和 context_hints，提示 Agent 优先读取哪些源码文件
+```
+
+示例：
+
+```bash
+python - <<'PY'
+from agent.tools import read_error_logs
+
+result = read_error_logs(mode="grouped")
+print(result)
+PY
+```
+
+### 测试运行工具
+
+`run_tests.py` 负责在 Agent 修改代码后运行测试，判断修复是否成功。
+
+核心函数：
+
+```text
+run_tests()
+```
+
+默认执行：
+
+```text
+python -m pytest tests/
+```
+
+返回内容包括：
+
+```text
+passed
+exit_code
+command
+stdout
+stderr
+summary
+```
+
+示例：
+
+```bash
+python - <<'PY'
+from agent.tools import run_tests
+
+result = run_tests(cwd=".")
+print(result["ok"])
+print(result["data"]["summary"])
+PY
+```
+
+当前靶场还保留两个待修复 bug，因此此工具当前预期返回测试失败：
+
+```text
+3 passed, 2 failed
 ```
 
 ### Git 工具
@@ -263,6 +351,23 @@ https://open.feishu.cn/document/feishu-cards/quick-start/send-message-cards-with
 ```
 
 Agent 只需要根据 `ok` 判断是否继续下一步。
+
+### 预期工具调用顺序
+
+后续 Agent 主流程可以按这个顺序编排：
+
+```text
+read_error_logs(mode="grouped")
+  -> 选择一个错误事件
+  -> 根据 context_hints.files_to_read 读取相关源码
+  -> 生成并写入修复
+  -> run_tests()
+  -> git_diff()
+  -> git_commit()
+  -> create_pr()
+  -> build_review_card()
+  -> send_feishu_card()
+```
 
 ## Git / 飞书联调测试
 
