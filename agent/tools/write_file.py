@@ -52,6 +52,7 @@ def apply_replacements(
     file_updates: dict[Path, dict[str, Any]] = validation["data"]["file_updates"]
     changed_files = []
     file_hashes: dict[str, dict[str, str]] = {}
+    before_contents: dict[str, str] = {}
 
     for file_path, update in file_updates.items():
         before_content = update["before_content"]
@@ -62,6 +63,7 @@ def apply_replacements(
         file_path.write_text(after_content, encoding="utf-8")
         relative_path = _relative_display_path(file_path, repo)
         changed_files.append(relative_path)
+        before_contents[relative_path] = before_content
         file_hashes[relative_path] = {
             "before_sha256": _sha256_text(before_content),
             "after_sha256": _sha256_text(after_content),
@@ -73,6 +75,7 @@ def apply_replacements(
             "changed_files": changed_files,
             "operations": len(operations),
             "file_hashes": file_hashes,
+            "before_contents": before_contents,
         }
     )
 
@@ -116,8 +119,32 @@ def write_file(
             "path": _relative_display_path(file_path, repo),
             "before_sha256": _sha256_text(before_content),
             "after_sha256": _sha256_text(content),
+            "before_content": before_content,
         }
     )
+
+
+def restore_files(
+    before_contents: dict[str, str],
+    *,
+    repo_path: str | Path = ".",
+) -> ToolResult:
+    """Restore files from content snapshots returned by apply_replacements."""
+    if not before_contents:
+        return ok({"restored_files": []})
+
+    repo = Path(repo_path).resolve()
+    restored_files = []
+    for path, content in before_contents.items():
+        path_result = _resolve_writable_path(path, repo)
+        if not path_result["ok"]:
+            return fail(path_result["error"], {"restored_files": restored_files})
+
+        file_path: Path = path_result["data"]["path"]
+        file_path.write_text(content, encoding="utf-8")
+        restored_files.append(_relative_display_path(file_path, repo))
+
+    return ok({"restored_files": restored_files})
 
 
 def _validate_replacements(
