@@ -9,5 +9,10 @@ router = APIRouter(tags=["users"])
 
 
 @router.get("/users/{user_id}")
-async def get_user(user_id: int) -> dict[str, object]:
-    return get_user_by_id(user_id)
+async def get_user(user_id: int):
+    from fastapi.responses import JSONResponse
+
+    user = get_user_by_id(user_id)
+    if user is None:
+        return JSONResponse(status_code=404, content={"error": "user not found"})
+    return user

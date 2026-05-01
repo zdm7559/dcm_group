@@ -12,7 +12,7 @@ ToolResult = dict[str, Any]
 BUG_BLOCK_START = "=== AUTO_FIX_BUG_START ==="
 BUG_BLOCK_END = "=== AUTO_FIX_BUG_END ==="
 DEFAULT_LOG_PATH = "logs/error.log"
-PROJECT_FRAME_MARKER = "/飞书挑战赛/project/"
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 
 def ok(data: Any = None) -> ToolResult:
@@ -201,10 +201,8 @@ def extract_project_frames(traceback_text: str) -> list[dict[str, Any]]:
     project_frames = []
 
     for match in frame_pattern.finditer(traceback_text):
-        file_path = match.group("file")
-        if PROJECT_FRAME_MARKER in file_path:
-            file_path = file_path.split(PROJECT_FRAME_MARKER, 1)[1]
-        elif not file_path.startswith("web_service/"):
+        file_path = _to_project_relative_path(match.group("file"))
+        if file_path is None:
             continue
 
         project_frames.append(
@@ -216,6 +214,22 @@ def extract_project_frames(traceback_text: str) -> list[dict[str, Any]]:
         )
 
     return project_frames
+
+
+def _to_project_relative_path(file_path: str) -> str | None:
+    path = Path(file_path)
+
+    if path.is_absolute():
+        try:
+            return path.resolve().relative_to(PROJECT_ROOT).as_posix()
+        except ValueError:
+            return None
+
+    normalized_path = path.as_posix()
+    if normalized_path.startswith("web_service/") or normalized_path.startswith("agent/"):
+        return normalized_path
+
+    return None
 
 
 def _unique_files_from_frames(frames: Any) -> list[str]:

@@ -244,7 +244,15 @@ python -m agent.main --max-attempts 3
 指定项目根目录：
 
 ```bash
-python -m agent.main --repo-path /path/to/project --max-attempts 3
+python -m agent.main --repo-path <project-root> --max-attempts 3
+```
+
+默认情况下，命令行会输出适合人阅读的阶段进度，例如“读取日志、选择错误、读取源码、调用大模型、写入代码、语法检查、运行测试、保存记录”。这样可以直接看到 Agent 当前执行到哪一步。
+
+如果需要查看完整结构化 JSON，可以加上：
+
+```bash
+python -m agent.main --max-attempts 3 --json
 ```
 
 如果没有配置 `OPENAI_API_KEY`，流程会停在大模型调用前，并返回明确错误：
