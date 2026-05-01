@@ -170,16 +170,49 @@ def _restore_write_result(write_result: ToolResult, *, repo_path: str) -> ToolRe
 def _target_test_command(error_event: dict[str, Any]) -> list[str]:
     path = error_event.get("path")
     exception_type = error_event.get("exception_type")
-
-    if path == "/divide" or exception_type == "ZeroDivisionError":
+    if path == "/request/invalid-json":
+        return [sys.executable, "-m", "pytest", "tests/test_service.py::test_invalid_json_should_return_400"]
+    elif path == "/files/missing-config":
+        return [sys.executable, "-m", "pytest", "tests/test_service.py::test_missing_config_should_not_return_500"]
+    elif path == "/files/missing-log-dir":
+        return [
+            sys.executable,
+            "-m",
+            "pytest",
+            "tests/test_service.py::test_missing_log_dir_should_create_directory",
+        ]
+    elif path == "/config/missing-api-key":
+        return [
+            sys.executable,
+            "-m",
+            "pytest",
+            "tests/test_service.py::test_missing_api_key_should_return_client_or_service_error",
+        ]
+    elif path == "/config/invalid-timeout":
+        return [sys.executable, "-m", "pytest", "tests/test_service.py::test_invalid_timeout_should_return_400"]
+    elif path == "/dependencies/missing-yaml":
+        return [sys.executable, "-m", "pytest", "tests/test_service.py::test_missing_yaml_should_not_return_500"]
+    elif path == "/dependencies/bad-import":
+        return [sys.executable, "-m", "pytest", "tests/test_service.py::test_bad_import_should_not_return_500"]
+    elif path == "/naming/unknown-function":
+        return [sys.executable, "-m", "pytest", "tests/test_service.py::test_unknown_function_should_return_200"]
+    elif path == "/data/missing-profile":
+        return [sys.executable, "-m", "pytest", "tests/test_service.py::test_missing_profile_should_return_404"]
+    elif path == "/resources/not-found-as-500":
+        return [
+            sys.executable,
+            "-m",
+            "pytest",
+            "tests/test_service.py::test_not_found_resource_should_return_404",
+        ]
+    elif path == "/divide" or (path is None and exception_type == "ZeroDivisionError"):
         return [
             sys.executable,
             "-m",
             "pytest",
             "tests/test_service.py::test_divide_by_zero_should_return_400",
         ]
-
-    if str(path).startswith("/users/") or exception_type == "KeyError":
+    elif str(path).startswith("/users/") or (path is None and exception_type == "KeyError"):
         return [
             sys.executable,
             "-m",

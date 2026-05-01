@@ -5,15 +5,75 @@ import urllib.error
 import urllib.request
 
 
-BUG_PATHS = {
-    "divide": "/divide?a=10&b=0",
-    "user": "/users/999",
+BUG_CASES = {
+    "divide": {
+        "method": "GET",
+        "path": "/divide?a=10&b=0",
+    },
+    "user": {
+        "method": "GET",
+        "path": "/users/999",
+    },
+    "invalid-json": {
+        "method": "POST",
+        "path": "/request/invalid-json",
+        "body": "{bad json}",
+        "headers": {"Content-Type": "application/json"},
+    },
+    "missing-config": {
+        "method": "GET",
+        "path": "/files/missing-config",
+    },
+    "missing-log-dir": {
+        "method": "GET",
+        "path": "/files/missing-log-dir",
+    },
+    "missing-api-key": {
+        "method": "GET",
+        "path": "/config/missing-api-key",
+    },
+    "invalid-timeout": {
+        "method": "GET",
+        "path": "/config/invalid-timeout",
+    },
+    "missing-yaml": {
+        "method": "GET",
+        "path": "/dependencies/missing-yaml",
+    },
+    "bad-import": {
+        "method": "GET",
+        "path": "/dependencies/bad-import",
+    },
+    "unknown-function": {
+        "method": "GET",
+        "path": "/naming/unknown-function",
+    },
+    "missing-profile": {
+        "method": "GET",
+        "path": "/data/missing-profile",
+    },
+    "not-found-as-500": {
+        "method": "GET",
+        "path": "/resources/not-found-as-500",
+    },
 }
 
 
-def request_url(url: str) -> tuple[int, str]:
+def request_url(
+    url: str,
+    *,
+    method: str = "GET",
+    body: str | None = None,
+    headers: dict[str, str] | None = None,
+) -> tuple[int, str]:
+    request = urllib.request.Request(
+        url,
+        data=body.encode("utf-8") if body is not None else None,
+        headers=headers or {},
+        method=method,
+    )
     try:
-        with urllib.request.urlopen(url, timeout=5) as response:
+        with urllib.request.urlopen(request, timeout=5) as response:
             return response.status, response.read().decode("utf-8")
     except urllib.error.HTTPError as exc:
         return exc.code, exc.read().decode("utf-8")
@@ -23,7 +83,7 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "case",
-        choices=sorted(BUG_PATHS),
+        choices=sorted(BUG_CASES),
         help="Bug case to trigger.",
     )
     parser.add_argument(
@@ -33,14 +93,20 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    url = args.base_url.rstrip("/") + BUG_PATHS[args.case]
-    status, body = request_url(url)
+    case = BUG_CASES[args.case]
+    url = args.base_url.rstrip("/") + case["path"]
+    status, body = request_url(
+        url,
+        method=case.get("method", "GET"),
+        body=case.get("body"),
+        headers=case.get("headers"),
+    )
 
     print(f"{args.case}: {url}")
+    print(f"method: {case.get('method', 'GET')}")
     print(f"status: {status}")
     print(body)
 
 
 if __name__ == "__main__":
     main()
-
