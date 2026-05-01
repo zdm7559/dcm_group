@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import shutil
+from pathlib import Path
+
 import pytest
 from httpx import ASGITransport, AsyncClient
 
@@ -54,3 +57,146 @@ async def test_user_not_found_should_return_404(client: AsyncClient) -> None:
 
     assert response.status_code == 404
     assert response.json()["error"] == "user not found"
+
+
+async def test_invalid_json_should_return_400(client: AsyncClient) -> None:
+    response = await client.post(
+        "/request/invalid-json",
+        content="{bad json}",
+        headers={"Content-Type": "application/json"},
+    )
+
+    assert response.status_code == 400
+
+
+async def test_missing_config_should_not_return_500(client: AsyncClient) -> None:
+    response = await client.get("/files/missing-config")
+
+    assert response.status_code in {200, 404}
+
+
+async def test_missing_log_dir_should_create_directory(client: AsyncClient) -> None:
+    log_dir = Path("logs/missing-dir")
+    shutil.rmtree(log_dir, ignore_errors=True)
+
+    response = await client.get("/files/missing-log-dir")
+
+    assert response.status_code == 200
+    assert response.json() == {"status": "ok"}
+    assert (log_dir / "app.log").exists()
+
+
+async def test_missing_api_key_should_return_client_or_service_error(
+    client: AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("API_KEY", raising=False)
+
+    response = await client.get("/config/missing-api-key")
+
+    assert response.status_code in {400, 503}
+
+
+async def test_invalid_timeout_should_return_400(
+    client: AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("TIMEOUT", "abc")
+
+    response = await client.get("/config/invalid-timeout")
+
+    assert response.status_code == 400
+
+
+async def test_missing_yaml_should_not_return_500(client: AsyncClient) -> None:
+    response = await client.get("/dependencies/missing-yaml")
+
+    assert response.status_code in {200, 503}
+
+
+async def test_bad_import_should_not_return_500(client: AsyncClient) -> None:
+    response = await client.get("/dependencies/bad-import")
+
+    assert response.status_code in {200, 400, 404}
+
+
+async def test_unknown_function_should_return_200(client: AsyncClient) -> None:
+    response = await client.get("/naming/unknown-function")
+
+    assert response.status_code == 200
+    assert isinstance(response.json()["name"], str)
+
+
+async def test_missing_profile_should_return_404(client: AsyncClient) -> None:
+    response = await client.get("/data/missing-profile")
+
+    assert response.status_code == 404
+
+
+async def test_not_found_resource_should_return_404(client: AsyncClient) -> None:
+    response = await client.get("/resources/not-found-as-500")
+
+    assert response.status_code == 404
+
+
+async def test_missing_required_param_should_return_400(client: AsyncClient) -> None:
+    response = await client.get("/validation/missing-required", params={"name": "Alice"})
+
+    assert response.status_code == 400
+
+
+async def test_bad_age_param_should_return_400(client: AsyncClient) -> None:
+    response = await client.get("/validation/bad-age", params={"age": "abc"})
+
+    assert response.status_code == 400
+
+
+async def test_bad_range_param_should_return_400(client: AsyncClient) -> None:
+    response = await client.get("/validation/bad-range", params={"page": -1, "limit": 0})
+
+    assert response.status_code == 400
+
+
+async def test_empty_username_should_return_400(client: AsyncClient) -> None:
+    response = await client.get("/validation/empty-username", params={"username": ""})
+
+    assert response.status_code == 400
+
+
+async def test_missing_user_null_should_return_404(client: AsyncClient) -> None:
+    response = await client.get("/nulls/missing-user")
+
+    assert response.status_code == 404
+
+
+async def test_none_email_should_return_400(client: AsyncClient) -> None:
+    response = await client.get("/nulls/none-email")
+
+    assert response.status_code == 400
+
+
+async def test_missing_body_age_should_return_400(client: AsyncClient) -> None:
+    response = await client.post(
+        "/body/missing-age",
+        json={"name": "Alice"},
+    )
+
+    assert response.status_code == 400
+
+
+async def test_int_string_should_return_400(client: AsyncClient) -> None:
+    response = await client.get("/conversion/int-string", params={"value": "abc"})
+
+    assert response.status_code == 400
+
+
+async def test_float_string_should_return_400(client: AsyncClient) -> None:
+    response = await client.get("/conversion/float-string", params={"value": "hello"})
+
+    assert response.status_code == 400
+
+
+async def test_bad_date_should_return_400(client: AsyncClient) -> None:
+    response = await client.get("/conversion/bad-date", params={"date": "2026-99-99"})
+
+    assert response.status_code == 400

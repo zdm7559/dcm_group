@@ -12,7 +12,8 @@ ToolResult = dict[str, Any]
 BUG_BLOCK_START = "=== AUTO_FIX_BUG_START ==="
 BUG_BLOCK_END = "=== AUTO_FIX_BUG_END ==="
 DEFAULT_LOG_PATH = "logs/error.log"
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
+PROJECT_FRAME_MARKER = "/飞书挑战赛/project/"
+PROJECT_PATH_ROOTS = ("web_service", "tests", "agent")
 
 
 def ok(data: Any = None) -> ToolResult:
@@ -201,13 +202,14 @@ def extract_project_frames(traceback_text: str) -> list[dict[str, Any]]:
     project_frames = []
 
     for match in frame_pattern.finditer(traceback_text):
-        file_path = _to_project_relative_path(match.group("file"))
-        if file_path is None:
+        file_path = match.group("file")
+        relative_path = _to_project_relative_path(file_path)
+        if relative_path is None:
             continue
 
         project_frames.append(
             {
-                "file": file_path,
+                "file": relative_path,
                 "line": int(match.group("line")),
                 "function": match.group("function"),
             }
@@ -217,17 +219,18 @@ def extract_project_frames(traceback_text: str) -> list[dict[str, Any]]:
 
 
 def _to_project_relative_path(file_path: str) -> str | None:
-    path = Path(file_path)
+    if PROJECT_FRAME_MARKER in file_path:
+        return file_path.split(PROJECT_FRAME_MARKER, 1)[1]
 
-    if path.is_absolute():
-        try:
-            return path.resolve().relative_to(PROJECT_ROOT).as_posix()
-        except ValueError:
-            return None
+    normalized = file_path.replace("\\", "/")
+    for root in PROJECT_PATH_ROOTS:
+        if normalized == root or normalized.startswith(f"{root}/"):
+            return normalized
 
-    normalized_path = path.as_posix()
-    if normalized_path.startswith("web_service/") or normalized_path.startswith("agent/"):
-        return normalized_path
+    parts = Path(normalized).parts
+    for index, part in enumerate(parts):
+        if part in PROJECT_PATH_ROOTS:
+            return "/".join(parts[index:])
 
     return None
 
