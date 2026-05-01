@@ -13,6 +13,7 @@ from web_service.api.routes import (
     requests,
     resources,
     users,
+    validation_cases,
 )
 
 
@@ -27,3 +28,4 @@ api_router.include_router(dependencies.router)
 api_router.include_router(naming.router)
 api_router.include_router(profiles.router)
 api_router.include_router(resources.router)
+api_router.include_router(validation_cases.router)

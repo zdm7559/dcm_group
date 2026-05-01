@@ -137,3 +137,66 @@ async def test_not_found_resource_should_return_404(client: AsyncClient) -> None
     response = await client.get("/resources/not-found-as-500")
 
     assert response.status_code == 404
+
+
+async def test_missing_required_param_should_return_400(client: AsyncClient) -> None:
+    response = await client.get("/validation/missing-required", params={"name": "Alice"})
+
+    assert response.status_code == 400
+
+
+async def test_bad_age_param_should_return_400(client: AsyncClient) -> None:
+    response = await client.get("/validation/bad-age", params={"age": "abc"})
+
+    assert response.status_code == 400
+
+
+async def test_bad_range_param_should_return_400(client: AsyncClient) -> None:
+    response = await client.get("/validation/bad-range", params={"page": -1, "limit": 0})
+
+    assert response.status_code == 400
+
+
+async def test_empty_username_should_return_400(client: AsyncClient) -> None:
+    response = await client.get("/validation/empty-username", params={"username": ""})
+
+    assert response.status_code == 400
+
+
+async def test_missing_user_null_should_return_404(client: AsyncClient) -> None:
+    response = await client.get("/nulls/missing-user")
+
+    assert response.status_code == 404
+
+
+async def test_none_email_should_return_400(client: AsyncClient) -> None:
+    response = await client.get("/nulls/none-email")
+
+    assert response.status_code == 400
+
+
+async def test_missing_body_age_should_return_400(client: AsyncClient) -> None:
+    response = await client.post(
+        "/body/missing-age",
+        json={"name": "Alice"},
+    )
+
+    assert response.status_code == 400
+
+
+async def test_int_string_should_return_400(client: AsyncClient) -> None:
+    response = await client.get("/conversion/int-string", params={"value": "abc"})
+
+    assert response.status_code == 400
+
+
+async def test_float_string_should_return_400(client: AsyncClient) -> None:
+    response = await client.get("/conversion/float-string", params={"value": "hello"})
+
+    assert response.status_code == 400
+
+
+async def test_bad_date_should_return_400(client: AsyncClient) -> None:
+    response = await client.get("/conversion/bad-date", params={"date": "2026-99-99"})
+
+    assert response.status_code == 400

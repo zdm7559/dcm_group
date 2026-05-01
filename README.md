@@ -121,7 +121,7 @@ curl 'http://127.0.0.1:8000/users/1'
 
 ## Bug Case 列表
 
-项目目前维护了 12 个可稳定触发的 bug case，全部都在 [tests/test_service.py](/Users/chailyn/Desktop/comp/dcm_group/tests/test_service.py) 里有对应测试。
+项目目前维护了 22 个可稳定触发的 bug case，全部都在 [tests/test_service.py](tests/test_service.py) 里有对应测试。
 
 | case | 请求路径 | 典型异常 | 对应测试 |
 |---|---|---|---|
@@ -137,6 +137,16 @@ curl 'http://127.0.0.1:8000/users/1'
 | `unknown-function` | `/naming/unknown-function` | `NameError` | `test_unknown_function_should_return_200` |
 | `missing-profile` | `/data/missing-profile` | `AttributeError` | `test_missing_profile_should_return_404` |
 | `not-found-as-500` | `/resources/not-found-as-500` | `ValueError` | `test_not_found_resource_should_return_404` |
+| `missing-required` | `/validation/missing-required?name=Alice` | `KeyError` | `test_missing_required_param_should_return_400` |
+| `bad-age` | `/validation/bad-age?age=abc` | `ValueError` | `test_bad_age_param_should_return_400` |
+| `bad-range` | `/validation/bad-range?page=-1&limit=0` | `ZeroDivisionError` | `test_bad_range_param_should_return_400` |
+| `empty-username` | `/validation/empty-username?username=` | `IndexError` | `test_empty_username_should_return_400` |
+| `missing-user-null` | `/nulls/missing-user` | `TypeError` | `test_missing_user_null_should_return_404` |
+| `none-email` | `/nulls/none-email` | `AttributeError` | `test_none_email_should_return_400` |
+| `missing-body-age` | `/body/missing-age` | `KeyError` | `test_missing_body_age_should_return_400` |
+| `int-string` | `/conversion/int-string?value=abc` | `ValueError` | `test_int_string_should_return_400` |
+| `float-string` | `/conversion/float-string?value=hello` | `ValueError` | `test_float_string_should_return_400` |
+| `bad-date` | `/conversion/bad-date?date=2026-99-99` | `ValueError` | `test_bad_date_should_return_400` |
 
 ## 触发单条 Bug
 
@@ -163,6 +173,16 @@ bad-import
 unknown-function
 missing-profile
 not-found-as-500
+missing-required
+bad-age
+bad-range
+empty-username
+missing-user-null
+none-email
+missing-body-age
+int-string
+float-string
+bad-date
 ```
 
 如果你只想看某一条 bug 的日志，建议先清空旧日志：
@@ -257,6 +277,22 @@ tail -n 80 logs/error.log
 
 ```bash
 .venv/bin/python -m pytest tests/test_service.py::test_divide_by_zero_should_return_400 -q
+```
+
+## 批量修复模式
+
+默认情况下，agent 每次只选择 `logs/error.log` 里的一个错误分组进行修复。
+
+如果要顺序修复日志中的所有错误分组，可以使用：
+
+```bash
+.venv/bin/python -m agent.main --repo-path . --max-attempts 3 --all
+```
+
+默认输出是按阶段展示的进度日志。如果需要保留完整结构化结果，可以加 `--json`：
+
+```bash
+.venv/bin/python -m agent.main --repo-path . --max-attempts 3 --all --json
 ```
 
 ## Agent 主流程

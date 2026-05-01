@@ -56,6 +56,48 @@ BUG_CASES = {
         "method": "GET",
         "path": "/resources/not-found-as-500",
     },
+    "missing-required": {
+        "method": "GET",
+        "path": "/validation/missing-required?name=Alice",
+    },
+    "bad-age": {
+        "method": "GET",
+        "path": "/validation/bad-age?age=abc",
+    },
+    "bad-range": {
+        "method": "GET",
+        "path": "/validation/bad-range?page=-1&limit=0",
+    },
+    "empty-username": {
+        "method": "GET",
+        "path": "/validation/empty-username?username=",
+    },
+    "missing-user-null": {
+        "method": "GET",
+        "path": "/nulls/missing-user",
+    },
+    "none-email": {
+        "method": "GET",
+        "path": "/nulls/none-email",
+    },
+    "missing-body-age": {
+        "method": "POST",
+        "path": "/body/missing-age",
+        "body": "{\"name\":\"Alice\"}",
+        "headers": {"Content-Type": "application/json"},
+    },
+    "int-string": {
+        "method": "GET",
+        "path": "/conversion/int-string?value=abc",
+    },
+    "float-string": {
+        "method": "GET",
+        "path": "/conversion/float-string?value=hello",
+    },
+    "bad-date": {
+        "method": "GET",
+        "path": "/conversion/bad-date?date=2026-99-99",
+    },
 }
 
 
