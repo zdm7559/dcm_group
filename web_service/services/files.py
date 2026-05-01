@@ -8,4 +8,5 @@ def read_missing_config() -> str:
 
 
 def write_log_in_missing_dir() -> None:
+    Path("logs/missing-dir").mkdir(parents=True, exist_ok=True)
     Path("logs/missing-dir/app.log").write_text("started\n", encoding="utf-8")
