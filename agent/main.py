@@ -59,6 +59,24 @@ def print_summary(result: dict) -> None:
     if record_path:
         print(f"record: {record_path}")
 
+    post_actions = data.get("post_actions") or {}
+    branch_name = post_actions.get("branch_name")
+    if branch_name:
+        print(f"branch: {branch_name}")
+
+    pr_result = post_actions.get("pr_result") or {}
+    pr_data = pr_result.get("data") or {}
+    if pr_data.get("url"):
+        print(f"pr: {pr_data['url']}")
+    elif pr_result.get("error"):
+        print(f"pr_error: {pr_result['error']}")
+
+    feishu_result = post_actions.get("feishu_result") or {}
+    if feishu_result.get("ok") is True:
+        print("feishu: sent")
+    elif feishu_result.get("error"):
+        print(f"feishu_error: {feishu_result['error']}")
+
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Run AutoFix Agent once.")

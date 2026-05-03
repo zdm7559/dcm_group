@@ -3,13 +3,25 @@ from __future__ import annotations
 import json
 import subprocess
 import sys
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable
 
 from agent.fix_records import save_fix_record
 from agent.llm_client import call_llm
 from agent.prompts import build_diagnosis_messages, build_fix_messages
-from agent.tools import apply_replacements, read_error_logs, read_files_for_error, restore_files, run_tests
+from agent.tools import (
+    apply_replacements,
+    build_review_card,
+    create_branch,
+    create_pr,
+    git_commit,
+    read_error_logs,
+    read_files_for_error,
+    restore_files,
+    run_tests,
+    send_feishu_card,
+)
 
 
 ToolResult = dict[str, Any]
@@ -219,6 +231,15 @@ def _run_for_error(
             record_path = record_result.get("data", {}).get("path") if record_result.get("ok") else None
             if record_path:
                 _emit(progress, f"修复记录已保存：{record_path}")
+            post_actions = _run_post_success_actions(
+                selected_error,
+                diagnosis=diagnosis,
+                write_result=write_result,
+                test_result=test_result,
+                record_result=record_result,
+                repo_path=repo_path,
+                progress=progress,
+            )
             _emit(progress, "本次 AutoFix 成功完成")
             return ok(
                 {
@@ -227,6 +248,7 @@ def _run_for_error(
                     "write_result": write_result,
                     "test_result": test_result,
                     "record": record_result,
+                    "post_actions": post_actions,
                 }
             )
 
@@ -265,8 +287,165 @@ def _emit(progress: ProgressCallback | None, message: str) -> None:
         progress(message)
 
 
+def _run_post_success_actions(
+    error_event: dict[str, Any],
+    *,
+    diagnosis: dict[str, Any],
+    write_result: ToolResult,
+    test_result: ToolResult,
+    record_result: ToolResult,
+    repo_path: str,
+    progress: ProgressCallback | None,
+) -> dict[str, Any]:
+    _emit(progress, "开始执行成功后的 Git/PR/飞书通知链路")
+
+    changed_files = write_result.get("data", {}).get("changed_files", [])
+    branch_name = _build_autofix_branch_name(error_event)
+    branch_result = create_branch(branch_name, repo_path=repo_path)
+    if not branch_result["ok"]:
+        _emit(progress, f"创建修复分支失败：{branch_result['error']}")
+        return {
+            "branch_name": branch_name,
+            "branch_result": branch_result,
+            "commit_result": None,
+            "pr_result": None,
+            "feishu_result": None,
+        }
+
+    _emit(progress, f"已创建修复分支：{branch_name}")
+
+    commit_message = _build_commit_message(error_event)
+    commit_result = git_commit(commit_message, repo_path=repo_path, paths=changed_files)
+    if not commit_result["ok"]:
+        _emit(progress, f"自动提交失败：{commit_result['error']}")
+        return {
+            "branch_name": branch_name,
+            "branch_result": branch_result,
+            "commit_result": commit_result,
+            "pr_result": None,
+            "feishu_result": None,
+        }
+
+    _emit(progress, f"已创建提交：{commit_result.get('data', {}).get('commit_sha')}")
+
+    pr_title = _build_pr_title(error_event)
+    pr_body = _build_pr_body(
+        error_event,
+        diagnosis=diagnosis,
+        changed_files=changed_files,
+        test_result=test_result,
+        record_result=record_result,
+    )
+    pr_result = create_pr(pr_title, pr_body, repo_path=repo_path, base="main", head=branch_name)
+    if not pr_result["ok"]:
+        _emit(progress, f"创建 PR 失败：{pr_result['error']}")
+        return {
+            "branch_name": branch_name,
+            "branch_result": branch_result,
+            "commit_result": commit_result,
+            "pr_result": pr_result,
+            "feishu_result": None,
+        }
+
+    pr_url = pr_result.get("data", {}).get("url")
+    if pr_url:
+        _emit(progress, f"PR 已创建：{pr_url}")
+
+    card_payload = build_review_card(
+        title=_build_feishu_title(error_event),
+        bug_type=str(error_event.get("exception_type") or "unknown"),
+        endpoint=str(error_event.get("path") or "unknown"),
+        branch=branch_name,
+        pr_url=str(pr_url or ""),
+        test_result="passed",
+        risk_level=str(diagnosis.get("risk_level") or "low"),
+    )
+    feishu_result = send_feishu_card(card_payload)
+    if not feishu_result["ok"]:
+        _emit(progress, f"飞书通知失败：{feishu_result['error']}")
+    else:
+        _emit(progress, "飞书通知已发送")
+
+    return {
+        "branch_name": branch_name,
+        "branch_result": branch_result,
+        "commit_result": commit_result,
+        "pr_result": pr_result,
+        "feishu_result": feishu_result,
+    }
+
+
 def _select_error(error_groups: list[dict[str, Any]]) -> dict[str, Any]:
     return error_groups[0]["latest"]
+
+
+def _build_autofix_branch_name(error_event: dict[str, Any]) -> str:
+    path = str(error_event.get("path") or "unknown")
+    fingerprint = str(error_event.get("fingerprint") or "no-fingerprint")
+    normalized_path = path.strip("/").replace("/", "-").replace("_", "-") or "root"
+    safe_path = "".join(ch.lower() if ch.isalnum() or ch == "-" else "-" for ch in normalized_path)
+    timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    return f"autofix/{safe_path}-{fingerprint}-{timestamp}"
+
+
+def _build_commit_message(error_event: dict[str, Any]) -> str:
+    path = str(error_event.get("path") or "unknown")
+    exception_type = str(error_event.get("exception_type") or "unknown")
+    return f"fix: handle {exception_type} for {path}"
+
+
+def _build_pr_title(error_event: dict[str, Any]) -> str:
+    path = str(error_event.get("path") or "unknown")
+    exception_type = str(error_event.get("exception_type") or "unknown")
+    return f"AutoFix: handle {exception_type} for {path}"
+
+
+def _build_feishu_title(error_event: dict[str, Any]) -> str:
+    path = str(error_event.get("path") or "unknown")
+    exception_type = str(error_event.get("exception_type") or "unknown")
+    return f"AutoFix Review: {exception_type} {path}"
+
+
+def _build_pr_body(
+    error_event: dict[str, Any],
+    *,
+    diagnosis: dict[str, Any],
+    changed_files: list[str],
+    test_result: ToolResult,
+    record_result: ToolResult,
+) -> str:
+    test_command = (test_result.get("data") or {}).get("command") or []
+    record_path = (record_result.get("data") or {}).get("path")
+    lines = [
+        "## Summary",
+        f"- Error: `{error_event.get('exception_type')}`",
+        f"- Path: `{error_event.get('path')}`",
+        f"- Fingerprint: `{error_event.get('fingerprint')}`",
+        "",
+        "## Diagnosis",
+        f"- Root cause: {diagnosis.get('root_cause', 'N/A')}",
+        f"- Fix strategy: {diagnosis.get('fix_strategy', 'N/A')}",
+        f"- Risk level: {diagnosis.get('risk_level', 'unknown')}",
+        "",
+        "## Changed Files",
+    ]
+    if changed_files:
+        lines.extend(f"- `{path}`" for path in changed_files)
+    else:
+        lines.append("- None")
+
+    lines.extend(
+        [
+            "",
+            "## Verification",
+            f"- Target test: `{' '.join(test_command) if test_command else 'N/A'}`",
+            f"- Passed: `{(test_result.get('data') or {}).get('passed')}`",
+        ]
+    )
+    if record_path:
+        lines.extend(["", "## Local Record", f"- `{record_path}`"])
+
+    return "\n".join(lines)
 
 
 def _check_changed_python_files(write_result: ToolResult, *, repo_path: str) -> ToolResult:
