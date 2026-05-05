@@ -14,5 +14,8 @@ def find_profile(user_id: int) -> UserProfile | None:
 
 
 def get_profile_name(user_id: int) -> str:
+    from fastapi import HTTPException
     profile = find_profile(user_id)
+    if profile is None:
+        raise HTTPException(status_code=404, detail="Profile not found")
     return profile.display_name
