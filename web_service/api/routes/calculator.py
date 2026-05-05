@@ -10,4 +10,10 @@ router = APIRouter(tags=["calculator"])
 
 @router.get("/divide")
 async def divide(a: float, b: float) -> dict[str, float]:
-    return {"result": divide_numbers(a, b)}
+    from starlette.responses import JSONResponse
+
+    try:
+        result = divide_numbers(a, b)
+    except ZeroDivisionError:
+        return JSONResponse(status_code=400, content={"error": "division by zero"})
+    return {"result": result}
