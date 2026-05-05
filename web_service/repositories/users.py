@@ -8,5 +8,5 @@ USERS = {
 
 
 def find_user_by_id(user_id: int) -> dict[str, object]:
-    return USERS[user_id]
+    return USERS.get(user_id)
 
